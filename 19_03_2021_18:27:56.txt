@@ -1,0 +1,1 @@
+Total Timesteps: 50 Episode Num: 2 Episode steps 50 Goal last 100 ep : 0 Reward: -3.99  Average Re: -2.00 Time: (0.0, 0.0, 4.76)
