@@ -1,0 +1,1 @@
+# BachelorThesis_surface_normals_without_stacking
