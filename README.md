@@ -13,7 +13,7 @@ conda env create -f environment_kuka.yml
 
 
 # RGB 
-![](https://github.com/ChrisProgramming2018/BachelorThesis_surface_normals_without_stacking/data/image.gif)
+![](https://github.com/ChrisProgramming2018/BachelorThesis_surface_normals_without_stacking/blob/main/data/depth_image.gif)
 
 # Depth
 ![til](https://github.com/ChrisProgramming2018/BachelorThesis_surface_normals_without_stacking/data/depth_image.gif)
