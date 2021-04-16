@@ -13,6 +13,4 @@ conda env create -f environment_kuka.yml
 
 
 # RGB 
-![rgb](https://github.com/ChrisProgramming2018/BachelorThesis_surface_normals_without_stacking/blob/main/data/image.gif)
-
-
+![rgb](https://github.com/ChrisProgramming2018/BachelorThesis_surface_normals_without_stacking/blob/main/image.gif)
