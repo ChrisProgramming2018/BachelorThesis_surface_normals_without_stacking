@@ -7,8 +7,6 @@ from tqc_models import Actor, Critic, Encoder, quantile_huber_loss_f
 import torch.nn as nn
 import torch.nn.functional as F
 from helper import mkdir
-import torchvision.transforms.functional as TF
-from taskonomy_network import TaskonomyNetwork
 
 
 # Building the whole Training Process into a class
@@ -26,9 +24,6 @@ class TQC(object):
         self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), config["lr_encoder"])
         self.target_encoder = Encoder(config).to(config["device"])
         self.target_encoder.load_state_dict(self.encoder.state_dict())
-        self.device = config["device"]
-        self.model = TaskonomyNetwork().to(self.device)
-        self.model.load_model("trained_models/model-21170.39453125")
         self.batch_size = int(config["batch_size"])
         self.discount = config["discount"]
         self.tau = config["tau"]
@@ -42,6 +37,7 @@ class TQC(object):
         self.total_it = 0
         self.step = 0
 
+    
 
     def train(self, replay_buffer,  writer, iterations):
         self.step += 1
@@ -49,34 +45,22 @@ class TQC(object):
             self.write_tensorboard = 1 - self.write_tensorboard
         for it in range(iterations):
             # Step 4: We sample a batch of transitions (s, s’, a, r) from the memoy
-            #sys.stdout = open(os.devnull, "w")
-            obs, action, reward, next_obs, not_done, obs_aug, next_obs_aug = replay_buffer.sample(self.batch_size)
+            # sys.stdout = open(os.devnull, "w")
+            obs, action, reward, next_obs, not_done, obs_aug, obs_next_aug = replay_buffer.sample(self.batch_size)
             #sys.stdout = sys.__stdout__
+            
             # for augment 1
-            #obs = TF.to_tensor(obs).to(self.device)
-            #next_obs = TF.to_tensor(next_obs).to(self.device)
             obs = obs.div_(255)
             next_obs = next_obs.div_(255)
-            # print(obs.shape)
-            obs = self.model.encoder(obs)
             state = self.encoder.create_vector(obs)
             detach_state = state.detach()
-            # print(obs.shape)
-            next_obs = self.model.encoder(next_obs)
             next_state = self.target_encoder.create_vector(next_obs)
-            
             # for augment 2
             
-            #obs_aug = TF.to_tensor(obs_aug).to(self.device)
-            #next_obs_aug = TF.to_tensor(next_obs).to(self.device)
-            
             obs_aug = obs_aug.div_(255)
-            next_obs_aug = next_obs_aug.div_(255)
-            
-            obs_aug = self.model.encoder(obs_aug)
+            next_obs_aug = obs_next_aug.div_(255)
             state_aug = self.encoder.create_vector(obs_aug)
             detach_state_aug = state_aug.detach()
-            next_obs_aug = self.model.encoder(next_obs_aug)
             next_state_aug = self.target_encoder.create_vector(next_obs_aug)
             
             alpha = torch.exp(self.log_alpha)
@@ -101,8 +85,7 @@ class TQC(object):
             # for augment
             cur_z_aug = self.critic(state_aug, action)
             critic_loss += quantile_huber_loss_f(cur_z_aug, target, self.device)
-            critic_loss * 0.5
-            writer.add_scalar('Critic_loss', critic_loss, self.step)
+            critic_loss *= 0.5
             self.critic_optimizer.zero_grad()
             self.encoder_optimizer.zero_grad()
             critic_loss.backward()
@@ -122,22 +105,26 @@ class TQC(object):
             
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
-            writer.add_scalar('Actor_loss', actor_loss, self.step)
             self.actor_optimizer.step()
             
             self.alpha_optimizer.zero_grad()
             alpha_loss.backward()
-            writer.add_scalar('Alpha_loss', actor_loss, self.step)
             self.alpha_optimizer.step()
             self.total_it +=1
     
     def select_action(self, obs):
-        #obs = torch.FloatTensor(obs).to(self.device)
-        obs = obs.transpose(1,2,0)
-        obs = TF.to_tensor(obs).to(self.device)
-        obs = self.model.encoder(obs.unsqueeze(0))
-        state = self.encoder.create_vector(obs)
+        obs = torch.FloatTensor(obs).to(self.device)
+        obs = obs.div_(255)
+        state = self.encoder.create_vector(obs.unsqueeze(0))
         return self.actor.select_action(state)
+    
+    def select_action_batch(self, obs):
+        obs = torch.FloatTensor(obs).to(self.device)
+        obs = obs.div_(255)
+        state = self.encoder.create_vector(obs)
+        #return np.expand_dims(self.actor.select_action(state), axis=0)
+        actions =  self.actor.select_action_batch(state)
+        return actions
 
                 
 
@@ -153,12 +140,14 @@ class TQC(object):
     def save(self, filename):
         mkdir("", filename)
         torch.save(self.critic.state_dict(), filename + "_critic")
+        torch.save(self.target_critic.state_dict(), filename + "_target_critic")
         torch.save(self.critic_optimizer.state_dict(), filename + "_critic_optimizer")
                 
         torch.save(self.actor.state_dict(), filename + "_actor")
         torch.save(self.actor_optimizer.state_dict(), filename + "_actor_optimizer")
         
         torch.save(self.encoder.state_dict(), filename + "_encoder")
+        torch.save(self.target_encoder.state_dict(), filename + "_target_encoder")
         torch.save(self.encoder_optimizer.state_dict(), filename + "_encoder_optimizer")
         
         torch.save(self.log_alpha, filename + "_alpha")
@@ -168,12 +157,15 @@ class TQC(object):
     def load(self, filename):
         self.critic.load_state_dict(torch.load(filename + "_critic"))
         self.critic_optimizer.load_state_dict(torch.load(filename + "_critic_optimizer"))
-        self.critic_target = copy.deepcopy(self.critic)
+        self.target_critic.load_state_dict(torch.load(filename + "_target_critic"))
+        
         self.actor.load_state_dict(torch.load(filename + "_actor"))
         self.actor_optimizer.load_state_dict(torch.load(filename + "_actor_optimizer"))
-        self.actor_target = copy.deepcopy(self.actor) 
         
         self.encoder.load_state_dict(torch.load(filename + "_encoder"))
         self.encoder_optimizer.load_state_dict(torch.load(filename + "_encoder_optimizer"))
+        self.target_encoder.load_state_dict(torch.load(filename + "_target_encoder"))
+        
         self.log_alpha = torch.load(filename + "_alpha")
         self.alpha_optimizer.load_state_dict(torch.load(filename + "_alpha_optimizer"))
+        print("load agent ", filename)

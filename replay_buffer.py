@@ -1,11 +1,9 @@
 import numpy as np
 import kornia
-import  sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-np.set_printoptions(threshold=np.inf)
+import os
 
 class ReplayBuffer(object):
     """Buffer to store environment transitions."""
@@ -25,14 +23,13 @@ class ReplayBuffer(object):
         self.not_dones_no_max = np.empty((capacity, 1), dtype=np.bool)
 
         self.idx = 0
+        self.counter_parallel = 0
         self.full = False
-        self.k = 0
 
     def __len__(self):
         return self.capacity if self.full else self.idx
 
     def add(self, obs, action, reward, next_obs, done, done_no_max):
-        self.k +=1
         np.copyto(self.obses[self.idx], obs)
         np.copyto(self.actions[self.idx], action)
         np.copyto(self.rewards[self.idx], reward)
@@ -41,20 +38,30 @@ class ReplayBuffer(object):
         np.copyto(self.not_dones_no_max[self.idx], not done_no_max)
 
         self.idx = (self.idx + 1) % self.capacity
-        self.full = self.full or self.idx == 0
 
-
-    def get_size():
-        pass
+    
+    def add_batch(self, obs, action, reward, next_obs, done, done_no_max):
+        for i in range(obs.shape[0]):
+            np.copyto(self.obses[self.idx], obs[i])
+            np.copyto(self.actions[self.idx], action[i])
+            np.copyto(self.rewards[self.idx], reward[i])
+            np.copyto(self.next_obses[self.idx], next_obs[i])
+            np.copyto(self.not_dones[self.idx], not done[i])
+            np.copyto(self.not_dones_no_max[self.idx], not done_no_max[i])
+            self.idx = (self.idx + 1) % self.capacity
+            self.counter_parallel += 1
+            if self.counter_parallel >= self.capacity:
+                self.full = True
 
 
     def sample(self, batch_size):
         idxs = np.random.randint(0, self.capacity if self.full else self.idx, size=batch_size)
-    
+
         obses = self.obses[idxs]
         next_obses = self.next_obses[idxs]
         obses_aug = obses.copy()
         next_obses_aug = next_obses.copy()
+
 
         obses = torch.as_tensor(obses, device=self.device).float()
         next_obses = torch.as_tensor(next_obses, device=self.device).float()
@@ -63,17 +70,14 @@ class ReplayBuffer(object):
         actions = torch.as_tensor(self.actions[idxs], device=self.device)
         rewards = torch.as_tensor(self.rewards[idxs], device=self.device)
         not_dones_no_max = torch.as_tensor(self.not_dones_no_max[idxs], device=self.device)
-        
-        #print("state", obses)
-        
         obses = self.aug_trans(obses)
         next_obses = self.aug_trans(next_obses)
         
         obses_aug = self.aug_trans(obses)
         next_obses_aug = self.aug_trans(next_obses)
 
-        return obses, actions, rewards, next_obses, not_dones_no_max, obses_aug, next_obses_aug
 
+        return obses, actions, rewards, next_obses, not_dones_no_max, obses_aug, next_obses_aug
 
 
 
@@ -81,7 +85,7 @@ class ReplayBuffer(object):
         """
         Use numpy save function to store the data in a given file
         """
-
+        os.makedirs(filename, exist_ok=True)
 
         with open(filename + '/obses.npy', 'wb') as f:
             np.save(f, self.obses)
@@ -100,6 +104,14 @@ class ReplayBuffer(object):
         
         with open(filename + '/not_dones_no_max.npy', 'wb') as f:
             np.save(f, self.not_dones_no_max)
+        
+        with open(filename + '/index.txt', 'w') as f:
+            f.write("{}".format(self.idx))
+
+        with open(filename + '/full.txt', 'w') as f:
+            f.write("{}".format(self.full))
+
+        print("Save memory of size {} to filename {} ".format(self.idx, filename))
     
     def load_memory(self, filename):
         """
@@ -124,3 +136,11 @@ class ReplayBuffer(object):
         
         with open(filename + '/not_dones_no_max.npy', 'rb') as f:
             self.not_dones_no_max = np.load(f)
+
+        with open(filename + '/index.txt', 'r') as f:
+            self.idx = int(f.read())
+        
+        with open(filename + '/full.txt', 'r') as f:
+            self.full = bool(f.read())
+
+        print("Load memory of size {} from filename {} ".format(self.idx, filename))

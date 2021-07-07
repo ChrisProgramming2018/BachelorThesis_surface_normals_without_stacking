@@ -15,15 +15,17 @@ from torch.autograd import Variable
 from collections import deque
 from datetime import datetime
 from train import train_agent
-
+from helper import write_into_file
 
 def main(args):
     """ Starts different tests
     Args:
         param1(args): args
     """
-    path = args.locexp
+    with open (args.param, "r") as f:
+        param = json.load(f)
     # experiment_name = args.experiment_name
+    path = param["locexp"]
     res_path = os.path.join(path, "results")
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -31,9 +33,13 @@ def main(args):
     if not os.path.exists(dir_model):
         os.makedirs(dir_model)
     print("Created model dir {} ".format(dir_model))
-    with open (args.param, "r") as f:
-        param = json.load(f)
-    param["locexp"] = args.locexp
+    param["res_path"] = str(res_path)
+    parameter = ""
+    for n, p in enumerate(param):
+        print(str(p) + ": " + str(param[p]))
+        parameter += str(p) + ": " + str(param[p]) + "\n"
+
+    write_into_file(res_path + "/parameter", parameter)    
     train_agent(param)
 
 
@@ -43,6 +49,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--param', default="param.json", type=str)
-    parser.add_argument('--locexp', default="experiments/kuka", type=str)
+    parser.add_argument('--locexp', default="", type=str)
     arg = parser.parse_args()
     main(arg)
